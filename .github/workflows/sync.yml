@@ -1,4 +1,4 @@
-name: Publish Windows gh without Copilot
+name: Publish gh executables without Copilot
 
 on:
   schedule:
@@ -103,17 +103,27 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build Windows executable
+      - name: Build platform executables
         if: steps.upstream.outputs.build_required == 'true'
         env:
           TAG_NAME: ${{ steps.upstream.outputs.tag_name }}
         shell: bash
         run: |
           mkdir -p dist
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
-            -ldflags "-s -w -X github.com/cli/cli/v2/internal/build.Version=${TAG_NAME} -X github.com/cli/cli/v2/internal/build.Date=$(date -u +%F)" \
-            -o dist/gh.exe ./cmd/gh
-          test -s dist/gh.exe
+          build_flags="-s -w -X github.com/cli/cli/v2/internal/build.Version=${TAG_NAME} -X github.com/cli/cli/v2/internal/build.Date=$(date -u +%F)"
+
+          build() {
+            GOOS="$1" GOARCH="$2" CGO_ENABLED=0 go build -trimpath -ldflags "$build_flags" -o "$3" ./cmd/gh
+          }
+
+          build windows amd64 dist/gh_windows_amd64.exe
+          build linux amd64 dist/gh_linux_amd64
+          build darwin amd64 dist/gh_macos_amd64
+          build darwin arm64 dist/gh_macos_arm64
+          test -s dist/gh_windows_amd64.exe
+          test -s dist/gh_linux_amd64
+          test -s dist/gh_macos_amd64
+          test -s dist/gh_macos_arm64
 
       - name: Push no-copilot branch
         if: steps.upstream.outputs.sync_required == 'true'
@@ -140,7 +150,7 @@ jobs:
         env:
           TAG_NAME: ${{ steps.upstream.outputs.tag_name }}
         run: |
-          gh release create "$TAG_NAME" dist/gh.exe \
+          gh release create "$TAG_NAME" dist/gh_* \
             --target no-copilot \
             --title "GitHub CLI without Copilot ${TAG_NAME}" \
             --generate-notes
