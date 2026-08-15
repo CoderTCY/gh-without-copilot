@@ -1,0 +1,146 @@
+name: Publish Windows gh without Copilot
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-no-copilot
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.NO_COPILOT_SYNC_TOKEN }}
+
+    steps:
+      - name: Verify sync token
+        env:
+          SYNC_TOKEN: ${{ secrets.NO_COPILOT_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$SYNC_TOKEN" ]]; then
+            echo "NO_COPILOT_SYNC_TOKEN must grant Contents and Workflows write access." >&2
+            exit 1
+          fi
+
+      - name: Check out workflow branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.NO_COPILOT_SYNC_TOKEN }}
+
+      - name: Check upstream release and publication state
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_name="$(gh api repos/cli/cli/releases/latest --jq .tag_name)"
+          test -n "$tag_name"
+          git fetch --force --no-tags https://github.com/cli/cli.git "refs/tags/${tag_name}:refs/tags/upstream/${tag_name}"
+          upstream_commit="$(git rev-parse "refs/tags/upstream/${tag_name}^{}")"
+          no_copilot_ref="$(git ls-remote --heads origin no-copilot)"
+          sync_required=true
+
+          if [[ -n "$no_copilot_ref" ]]; then
+            no_copilot_sha="${no_copilot_ref%%$'\t'*}"
+            git fetch --no-tags origin "refs/heads/no-copilot:refs/remotes/origin/no-copilot"
+
+            if git merge-base --is-ancestor "$upstream_commit" origin/no-copilot &&
+              git cat-file -e "origin/no-copilot:pkg/cmd/root/root.go" &&
+              ! git cat-file -e "origin/no-copilot:pkg/cmd/copilot" 2>/dev/null &&
+              ! git grep --quiet "copilotCmd" origin/no-copilot -- pkg/cmd/root/root.go; then
+              sync_required=false
+            fi
+          else
+            no_copilot_sha=""
+          fi
+
+          release_missing=true
+          if gh release view "$tag_name" >/dev/null 2>&1; then
+            release_missing=false
+          fi
+
+          echo "sync_required=${sync_required}" >> "$GITHUB_OUTPUT"
+          echo "build_required=$([[ "$sync_required" == true || "$release_missing" == true ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "release_missing=${release_missing}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+          echo "upstream_commit=${upstream_commit}" >> "$GITHUB_OUTPUT"
+          echo "no_copilot_sha=${no_copilot_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare no-copilot source
+        if: steps.upstream.outputs.build_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.upstream.outputs.sync_required }}" == true ]]; then
+            git switch --force-create no-copilot "${{ steps.upstream.outputs.upstream_commit }}"
+            sed -i '/copilotCmd "github.com\/cli\/cli\/v2\/pkg\/cmd\/copilot"/d' pkg/cmd/root/root.go
+            sed -i '/cmd.AddCommand(copilotCmd.NewCmdCopilot(f, telemetry, nil))/d' pkg/cmd/root/root.go
+            if [[ -d pkg/cmd/copilot ]]; then
+              git rm -r pkg/cmd/copilot
+            fi
+            gofmt -w pkg/cmd/root/root.go
+
+            if grep -q 'copilotCmd\|pkg/cmd/copilot' pkg/cmd/root/root.go; then
+              echo "Copilot command registration was not completely removed." >&2
+              exit 1
+            fi
+          else
+            git switch --detach origin/no-copilot
+          fi
+
+      - name: Set up Go
+        if: steps.upstream.outputs.build_required == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build Windows executable
+        if: steps.upstream.outputs.build_required == 'true'
+        env:
+          TAG_NAME: ${{ steps.upstream.outputs.tag_name }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -X github.com/cli/cli/v2/internal/build.Version=${TAG_NAME} -X github.com/cli/cli/v2/internal/build.Date=$(date -u +%F)" \
+            -o dist/gh.exe ./cmd/gh
+          test -s dist/gh.exe
+
+      - name: Push no-copilot branch
+        if: steps.upstream.outputs.sync_required == 'true'
+        env:
+          TAG_NAME: ${{ steps.upstream.outputs.tag_name }}
+          NO_COPILOT_SHA: ${{ steps.upstream.outputs.no_copilot_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pkg/cmd/root/root.go
+          git commit -m "Sync no-copilot with cli/cli ${TAG_NAME}"
+
+          if [[ -n "$NO_COPILOT_SHA" ]]; then
+            git push --force-with-lease="refs/heads/no-copilot:${NO_COPILOT_SHA}" origin HEAD:refs/heads/no-copilot
+          else
+            git push origin HEAD:refs/heads/no-copilot
+          fi
+
+      - name: Publish unsigned GitHub Release
+        if: steps.upstream.outputs.release_missing == 'true'
+        env:
+          TAG_NAME: ${{ steps.upstream.outputs.tag_name }}
+        run: |
+          gh release create "$TAG_NAME" dist/gh.exe \
+            --target no-copilot \
+            --title "GitHub CLI without Copilot ${TAG_NAME}" \
+            --generate-notes
