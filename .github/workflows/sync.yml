@@ -117,11 +117,15 @@ jobs:
           }
 
           build windows amd64 dist/gh_windows_amd64.exe
+          build windows arm64 dist/gh_windows_arm64.exe
           build linux amd64 dist/gh_linux_amd64
+          build linux arm64 dist/gh_linux_arm64
           build darwin amd64 dist/gh_macos_amd64
           build darwin arm64 dist/gh_macos_arm64
           test -s dist/gh_windows_amd64.exe
+          test -s dist/gh_windows_arm64.exe
           test -s dist/gh_linux_amd64
+          test -s dist/gh_linux_arm64
           test -s dist/gh_macos_amd64
           test -s dist/gh_macos_arm64
 
