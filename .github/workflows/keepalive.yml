@@ -2,12 +2,15 @@ name: Keep scheduled workflows active
 
 on:
   schedule:
-    - cron: "37 4 * * *"
+    - cron: "37 4 * * 0"
   workflow_dispatch:
 
 permissions:
-  actions: write
-  contents: read
+  contents: write
+
+concurrency:
+  group: keep-scheduled-workflows-active
+  cancel-in-progress: false
 
 jobs:
   keepalive:
@@ -18,8 +21,22 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Keep the release workflow active
-        uses: gautamkrishnar/keepalive-workflow@v2
-        with:
-          time_elapsed: "59"
-          workflow_files: "sync.yml"
+      - name: Create a 53-day keepalive commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          readonly time_elapsed_days=53
+          readonly last_commit_epoch="$(git log -1 --format=%ct)"
+          readonly current_epoch="$(date -u +%s)"
+          readonly elapsed_days=$(( (current_epoch - last_commit_epoch) / 86400 ))
+
+          if (( elapsed_days < time_elapsed_days )); then
+            echo "Latest commit is ${elapsed_days} day(s) old; no keepalive commit is due."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keep scheduled workflows active"
+          git push origin HEAD:main
