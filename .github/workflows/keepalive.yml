@@ -1,0 +1,25 @@
+name: Keep scheduled workflows active
+
+on:
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out workflow branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Keep the release workflow active
+        uses: gautamkrishnar/keepalive-workflow@v2
+        with:
+          time_elapsed: "59"
+          workflow_files: "sync.yml"
