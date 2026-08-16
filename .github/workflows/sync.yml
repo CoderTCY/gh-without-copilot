@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: sync-no-copilot
@@ -16,24 +16,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.NO_COPILOT_SYNC_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Verify release token
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "NO_COPILOT_SYNC_TOKEN must grant Contents write access to ${GITHUB_REPOSITORY}." >&2
-            exit 1
-          fi
-
-          if [[ "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .permissions.push)" != true ]]; then
-            echo "NO_COPILOT_SYNC_TOKEN cannot write to ${GITHUB_REPOSITORY}." >&2
-            exit 1
-          fi
-
       - name: Check out workflow branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
