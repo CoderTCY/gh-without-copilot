@@ -99,5 +99,5 @@ jobs:
         run: |
           gh release create "$TAG_NAME" dist/gh_* \
             --target main \
-            --title "GitHub CLI without Copilot ${TAG_NAME}" \
+            --title "GitHub CLI without copilot ${TAG_NAME}" \
             --notes "Built from cli/cli@${TAG_NAME} with the Copilot command removed."

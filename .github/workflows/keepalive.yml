@@ -21,12 +21,12 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Create a 53-day keepalive commit
+      - name: Create a 52-day keepalive commit
         shell: bash
         run: |
           set -euo pipefail
 
-          readonly time_elapsed_days=53
+          readonly time_elapsed_days=52
           readonly last_commit_epoch="$(git log -1 --format=%ct)"
           readonly current_epoch="$(date -u +%s)"
           readonly elapsed_days=$(( (current_epoch - last_commit_epoch) / 86400 ))
