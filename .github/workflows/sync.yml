@@ -51,7 +51,7 @@ jobs:
 
           git switch --detach "${{ steps.upstream.outputs.upstream_commit }}"
           sed -i '/copilotCmd "github.com\/cli\/cli\/v2\/pkg\/cmd\/copilot"/d' pkg/cmd/root/root.go
-          sed -i '/cmd.AddCommand(copilotCmd.NewCmd[C]opilot(f, telemetry, nil))/d' pkg/cmd/root/root.go
+          sed -i '/cmd.AddCommand(copilotCmd.NewCmdCopilot(f, telemetry, nil))/d' pkg/cmd/root/root.go
           rm -rf pkg/cmd/copilot
           gofmt -w pkg/cmd/root/root.go
 
