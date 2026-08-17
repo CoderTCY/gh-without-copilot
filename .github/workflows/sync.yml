@@ -1,8 +1,8 @@
-name: Publish gh executables without Copilot
+name: Publish gh executables without copilot
 
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -51,12 +51,12 @@ jobs:
 
           git switch --detach "${{ steps.upstream.outputs.upstream_commit }}"
           sed -i '/copilotCmd "github.com\/cli\/cli\/v2\/pkg\/cmd\/copilot"/d' pkg/cmd/root/root.go
-          sed -i '/cmd.AddCommand(copilotCmd.NewCmdCopilot(f, telemetry, nil))/d' pkg/cmd/root/root.go
+          sed -i '/cmd.AddCommand(copilotCmd.NewCmd[C]opilot(f, telemetry, nil))/d' pkg/cmd/root/root.go
           rm -rf pkg/cmd/copilot
           gofmt -w pkg/cmd/root/root.go
 
           if grep -q 'copilotCmd\|pkg/cmd/copilot' pkg/cmd/root/root.go; then
-            echo "Copilot command registration was not completely removed." >&2
+            echo "copilot command registration was not completely removed." >&2
             exit 1
           fi
 
@@ -100,4 +100,4 @@ jobs:
           gh release create "$TAG_NAME" dist/gh_* \
             --target main \
             --title "GitHub CLI without copilot ${TAG_NAME}" \
-            --notes "Built from cli/cli@${TAG_NAME} with the Copilot command removed."
+            --notes "Built from cli/cli@${TAG_NAME} with the `copilot` subcommand removed."
